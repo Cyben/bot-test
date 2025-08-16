@@ -471,7 +471,7 @@ rngfilt(x, r) =>
     rngfilt = x
     rngfilt := x > nz(rngfilt[1]) ? x - r < nz(rngfilt[1]) ? nz(rngfilt[1]) : x - r : x + r > nz(rngfilt[1]) ? nz(rngfilt[1]) : x + r
 percWidth(len, perc) => (ta.highest(len) - ta.lowest(len)) * perc / 100
-securityNoRep(sym, res, src) => request.security(sym, res, src, barmerge.gaps_off, barmerge.lookahead_on)
+securityNoRep(sym, res, src) => request.security(sym, res, src, barmerge.gaps_off, barmerge.lookahead_off)
 swingPoints(prd) =>
     pivHi = ta.pivothigh(prd, prd)
     pivLo = ta.pivotlow (prd, prd)
@@ -712,7 +712,7 @@ variant(type, src, len, offSig, offALMA) =>
 
 // security wrapper for repeat calls
 reso(exp, use, res) =>
-    security_1 = request.security(syminfo.tickerid, res, exp, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_on)
+    security_1 = request.security(syminfo.tickerid, res, exp, gaps=barmerge.gaps_off, lookahead=barmerge.lookahead_off)
     use ? security_1 : exp
 
 // === /BASE FUNCTIONS ===
@@ -726,13 +726,38 @@ closeSeriesAlt = reso(closeSeries, useRes, stratRes)
 openSeriesAlt = reso(openSeries, useRes, stratRes)
 //
 // === ALERT conditions
-xlong = ta.crossover(closeSeriesAlt, openSeriesAlt)
-xshort = ta.crossunder(closeSeriesAlt, openSeriesAlt)
-longCond = xlong  // alternative: longCond[1]? false : (xlong or xlong[1]) and close>closeSeriesAlt and close>=open
-shortCond = xshort  // alternative: shortCond[1]? false : (xshort or xshort[1]) and close<closeSeriesAlt and close<=open
+// Filters
+useTrendFilter = input.bool(true, "Use Trend Filter", group="Filters")
+trendEmaLen = input.int(200, "Trend EMA Length", group="Filters", minval=1)
+useRsiFilter = input.bool(false, "Use RSI Filter", group="Filters")
+rsiLenFilter = input.int(14, "RSI Length", group="Filters", minval=2)
+minRsiForLong = input.int(50, "Min RSI for Long", group="Filters", minval=0, maxval=100)
+maxRsiForShort = input.int(50, "Max RSI for Short", group="Filters", minval=0, maxval=100)
+useSupertrendFilter = input.bool(false, "Use Supertrend Filter", group="Filters")
+stFactor = input.float(3.0, "Supertrend Factor", group="Filters", step=0.1)
+stAtrLen = input.int(10, "Supertrend ATR Length", group="Filters", minval=1)
+
+emaTrendFilter = ta.ema(close, trendEmaLen)
+rsiFilterValue = ta.rsi(close, rsiLenFilter)
+[stValue, stDirection] = supertrend(hl2, stFactor, stAtrLen)
+superTrendBull = stDirection == -1
+superTrendBear = stDirection == 1
+
+hasBullCross = ta.crossover(closeSeriesAlt, openSeriesAlt)
+hasBearCross = ta.crossunder(closeSeriesAlt, openSeriesAlt)
+
+trendLongOk = not useTrendFilter or close > emaTrendFilter
+trendShortOk = not useTrendFilter or close < emaTrendFilter
+rsiLongOk = not useRsiFilter or rsiFilterValue >= minRsiForLong
+rsiShortOk = not useRsiFilter or rsiFilterValue <= maxRsiForShort
+stLongOk = not useSupertrendFilter or superTrendBull
+stShortOk = not useSupertrendFilter or superTrendBear
+
+longCond = hasBullCross and trendLongOk and rsiLongOk and stLongOk
+shortCond = hasBearCross and trendShortOk and rsiShortOk and stShortOk
 // === /ALERT conditions.
-buy = ta.crossover(closeSeriesAlt, openSeriesAlt)
-sell = ta.crossunder(closeSeriesAlt, openSeriesAlt)
+buy = longCond and barstate.isconfirmed
+sell = shortCond and barstate.isconfirmed
 
 plotshape(buy,  title = "Buy",  text = 'Buy',  style = shape.labelup,   location = location.belowbar, color= #00DBFF, textcolor = #FFFFFF, transp = 0, size = size.tiny)
 plotshape(sell, title = "Sell", text = 'Sell', style = shape.labeldown, location = location.abovebar, color= #E91E63, textcolor = #FFFFFF, transp = 0, size = size.tiny)
