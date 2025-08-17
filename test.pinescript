@@ -1,6 +1,6 @@
 //@version=5
 //
-strategy(title='God 62 PERSONAL - OPTIMIZED v2', overlay=true, pyramiding=0, default_qty_type=strategy.percent_of_equity, default_qty_value=10, calc_on_every_tick=false)
+strategy(title='God 62 PERSONAL - ADVANCED ALGORITHM', overlay=true, pyramiding=0, default_qty_type=strategy.percent_of_equity, default_qty_value=10, calc_on_every_tick=false)
 //
 // === INPUTS ===
 res    = input.timeframe(title='TIMEFRAME', defval='15', group ="NON REPAINT")
@@ -15,284 +15,157 @@ scolor = input(true, title='Show coloured Bars to indicate Trend?')
 delayOffset = input.int(defval=0, title='Delay Open/Close MA (Forces Non-Repainting)', minval=0, step=1)
 tradeType = input.string('BOTH', title='What trades should be taken : ', options=['LONG', 'SHORT', 'BOTH', 'NONE'])
 
-// === IMPROVED SIGNAL FILTERING INPUTS ===
-enableTrendFilter = input.bool(true, title="Enable Trend Filter", group="Signal Filtering")
-enableVolumeFilter = input.bool(false, title="Enable Volume Filter", group="Signal Filtering") // Disabled by default
-enableRSIFilter = input.bool(false, title="Enable RSI Filter", group="Signal Filtering") // Disabled by default
-enableATRFilter = input.bool(false, title="Enable ATR Filter", group="Signal Filtering") // Disabled by default
+// === ADVANCED ALGORITHM SETTINGS ===
+// Momentum settings
+rsiPeriod = input.int(14, title="RSI Period", minval=10, maxval=30, group="Momentum")
+rsiOverbought = input.int(70, title="RSI Overbought", minval=65, maxval=80, group="Momentum")
+rsiOversold = input.int(30, title="RSI Oversold", minval=20, maxval=35, group="Momentum")
 
-// Trend filter settings - More flexible
-trendEmaPeriod = input.int(50, title="Trend EMA Period", minval=20, maxval=200, group="Signal Filtering") // Reduced from 200
-trendStrength = input.float(0.3, title="Trend Strength Multiplier", minval=0.1, maxval=1.0, step=0.1, group="Signal Filtering") // Reduced from 0.5
+// Volume settings
+volumePeriod = input.int(20, title="Volume SMA Period", minval=10, maxval=50, group="Volume")
+volumeMultiplier = input.float(1.5, title="Volume Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Volume")
 
-// Volume filter settings
-volumePeriod = input.int(20, title="Volume SMA Period", minval=10, maxval=50, group="Signal Filtering")
-volumeMultiplier = input.float(1.2, title="Volume Multiplier", minval=1.0, maxval=2.0, step=0.1, group="Signal Filtering") // Reduced from 1.5
+// Market structure settings
+swingLength = input.int(10, title="Swing High/Low Length", minval=5, maxval=20, group="Market Structure")
+atrPeriod = input.int(14, title="ATR Period", minval=10, maxval=30, group="Market Structure")
+atrMultiplier = input.float(1.5, title="ATR Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Market Structure")
 
-// RSI filter settings - More permissive
-rsiPeriod = input.int(14, title="RSI Period", minval=10, maxval=30, group="Signal Filtering")
-rsiOverbought = input.int(75, title="RSI Overbought", minval=65, maxval=85, group="Signal Filtering") // Increased from 70
-rsiOversold = input.int(25, title="RSI Oversold", minval=15, maxval=35, group="Signal Filtering") // Reduced from 30
+// Multi-timeframe settings
+htfPeriod = input.string("D", title="Higher Timeframe", options=["1", "3", "5", "15", "30", "60", "D", "W"], group="Multi-Timeframe")
+ltfPeriod = input.string("5", title="Lower Timeframe", options=["1", "3", "5", "15", "30", "60", "D", "W"], group="Multi-Timeframe")
 
-// ATR filter settings
-atrPeriod = input.int(14, title="ATR Period", minval=10, maxval=30, group="Signal Filtering")
-atrMultiplier = input.float(0.8, title="ATR Multiplier", minval=0.5, maxval=2.0, step=0.1, group="Signal Filtering") // Reduced from 1.0
-
-// === EXIT MANAGEMENT INPUTS ===
+// Exit management
 enableTrailingStop = input.bool(true, title="Enable Trailing Stop", group="Exit Management")
-trailingStopPercent = input.float(2.0, title="Trailing Stop %", minval=0.5, maxval=10.0, step=0.1, group="Exit Management")
+trailingStopPercent = input.float(1.5, title="Trailing Stop %", minval=0.5, maxval=5.0, step=0.1, group="Exit Management")
 enableTakeProfit = input.bool(true, title="Enable Take Profit", group="Exit Management")
-takeProfitPercent = input.float(3.0, title="Take Profit %", minval=1.0, maxval=10.0, step=0.1, group="Exit Management")
+takeProfitPercent = input.float(2.5, title="Take Profit %", minval=1.0, maxval=10.0, step=0.1, group="Exit Management")
 enableStopLoss = input.bool(true, title="Enable Stop Loss", group="Exit Management")
-stopLossPercent = input.float(2.0, title="Stop Loss %", minval=0.5, maxval=10.0, step=0.1, group="Exit Management")
+stopLossPercent = input.float(1.5, title="Stop Loss %", minval=0.5, maxval=5.0, step=0.1, group="Exit Management")
 
 // === /INPUTS ===
 
 // === NON-REPAINTING SECURITY FUNCTION ===
-// This function ensures no repainting by using proper lookahead settings
 rp_security(_symbol, _res, _src) =>
     request.security(_symbol, _res, _src, barmerge.gaps_off, barmerge.lookahead_off)
 
-// === /INPUTS ===
-h = input(false, title='Signals for Heikin Ashi Candles')
-src = h ? request.security(ticker.heikinashi(syminfo.tickerid), timeframe.period, close, lookahead=barmerge.lookahead_off) : close
+// === ADVANCED ALGORITHM FUNCTIONS ===
 
-//      INDICATOR SETTINGS
-swing_length = input.int(10, title = 'Swing High/Low Length', group = 'Settings', minval = 1, maxval = 50)
-history_of_demand_to_keep = input.int(20, title = 'History To Keep', minval = 5, maxval = 50)
-box_width = input.float(2.5, title = 'Supply/Demand Box Width', group = 'Settings', minval = 1, maxval = 10, step = 0.5)
-
-//      INDICATOR VISUAL SETTINGS
-show_zigzag = input.bool(false, title = 'Show Zig Zag', group = 'Visual Settings', inline = '1')
-show_price_action_labels = input.bool(false, title = 'Show Price Action Labels', group = 'Visual Settings', inline = '2')
-
-supply_color = input.color(color.new(#EDEDED,70), title = 'Supply', group = 'Visual Settings', inline = '3')
-supply_outline_color = input.color(color.new(color.white,75), title = 'Outline', group = 'Visual Settings', inline = '3')
-
-demand_color = input.color(color.new(#00FFFF,70), title = 'Demand', group = 'Visual Settings', inline = '4')
-demand_outline_color = input.color(color.new(color.white,75), title = 'Outline', group = 'Visual Settings', inline = '4')
-
-bos_label_color = input.color(color.white, title = 'BOS Label', group = 'Visual Settings', inline = '5')
-poi_label_color = input.color(color.white, title = 'POI Label', group = 'Visual Settings', inline = '7')
-
-swing_type_color = input.color(color.black, title = 'Price Action Label', group = 'Visual Settings', inline = '8')
-zigzag_color = input.color(color.new(#000000,0), title = 'Zig Zag', group = 'Visual Settings', inline = '9')
-
-//
-//END SETTINGS
-//
-
-//
-//FUNCTIONS
-//
-
-//      FUNCTION TO ADD NEW AND REMOVE LAST IN ARRAY
-f_array_add_pop(array, new_value_to_add) =>
-    array.unshift(array, new_value_to_add)
-    array.pop(array)
-
-//      FUNCTION SWING H & L LABELS
-f_sh_sl_labels(array, swing_type) =>
-    var string label_text = na
-    if swing_type == 1
-        if array.get(array, 0) >= array.get(array, 1)
-            label_text := 'HH'
-        else
-            label_text := 'LH'
-        label.new(bar_index - swing_length, array.get(array,0), text = label_text, style=label.style_label_down, textcolor = swing_type_color, color = color.new(swing_type_color, 100), size = size.tiny)
+// Function to calculate dynamic support and resistance
+getSupportResistance() =>
+    var float resistance = na
+    var float support = na
     
-    else if swing_type == -1
-        if array.get(array, 0) >= array.get(array, 1)
-            label_text := 'HL'
-        else
-            label_text := 'LL'
-        label.new(bar_index - swing_length, array.get(array,0), text = label_text, style=label.style_label_up, textcolor = swing_type_color, color = color.new(swing_type_color, 100), size = size.tiny)
-
-//      FUNCTION MAKE SURE SUPPLY ISNT OVERLAPPING
-f_check_overlapping(new_poi, box_array, atr) =>
-    atr_threshold = atr * 2
-    okay_to_draw = true
-
-    for i = 0 to array.size(box_array) - 1
-        top = box.get_top(array.get(box_array, i))
-        bottom = box.get_bottom(array.get(box_array, i))
-        poi = (top + bottom) / 2
-
-        upper_boundary = poi + atr_threshold
-        lower_boundary = poi - atr_threshold
-
-        if new_poi >= lower_boundary and new_poi <= upper_boundary
-            okay_to_draw := false
-            break
-        else 
-            okay_to_draw := true
-    okay_to_draw
-
-//      FUNCTION TO DRAW SUPPLY OR DEMAND ZONE
-f_supply_demand(value_array, bn_array, box_array, label_array, box_type, atr) =>
-    atr_buffer = atr * (box_width / 10)
-    box_left = array.get(bn_array, 0)
-    box_right = bar_index
-
-    var float box_top = 0.00
-    var float box_bottom = 0.00
-    var float poi = 0.00
-
-    if box_type == 1
-        box_top := array.get(value_array, 0)
-        box_bottom := box_top - atr_buffer
-        poi := (box_top + box_bottom) / 2
-    else if box_type == -1
-        box_bottom := array.get(value_array, 0)
-        box_top := box_bottom + atr_buffer
-        poi := (box_top + box_bottom) / 2
-
-    okay_to_draw = f_check_overlapping(poi, box_array, atr)
-
-    //delete oldest box, and then create a new box and add it to the array
-    if box_type == 1 and okay_to_draw
-        box.delete( array.get(box_array, array.size(box_array) - 1) )
-        f_array_add_pop(box_array, box.new( left = box_left, top = box_top, right = box_right, bottom = box_bottom, border_color = supply_outline_color,
-             bgcolor = supply_color, extend = extend.right, text = 'SUPPLY', text_halign = text.align_center, text_valign = text.align_center, text_color = poi_label_color, text_size = size.small, xloc = xloc.bar_index))
-        
-        box.delete( array.get(label_array, array.size(label_array) - 1) )
-        f_array_add_pop(label_array, box.new( left = box_left, top = poi, right = box_right, bottom = poi, border_color = color.new(poi_label_color,90),
-             bgcolor = color.new(poi_label_color,90), extend = extend.right, text = 'POI', text_halign = text.align_left, text_valign = text.align_center, text_color = poi_label_color, text_size = size.small, xloc = xloc.bar_index))
-
-    else if box_type == -1 and okay_to_draw
-        box.delete( array.get(box_array, array.size(box_array) - 1) )
-        f_array_add_pop(box_array, box.new( left = box_left, top = box_top, right = box_right, bottom = box_bottom, border_color = demand_outline_color,
-             bgcolor = demand_color, extend = extend.right,  text = 'DEMAND', text_halign = text.align_center, text_valign = text.align_center, text_color = poi_label_color, text_size = size.small, xloc = xloc.bar_index))
-        
-        box.delete( array.get(label_array, array.size(label_array) - 1) )
-        f_array_add_pop(label_array, box.new( left = box_left, top = poi, right = box_right, bottom = poi, border_color = color.new(poi_label_color,90),
-             bgcolor = color.new(poi_label_color,90), extend = extend.right,  text = 'POI', text_halign = text.align_left, text_valign = text.align_center, text_color = poi_label_color, text_size = size.small, xloc = xloc.bar_index))
-
-//      FUNCTION TO CHANGE SUPPLY/DEMAND TO A BOS IF BROKEN
-f_sd_to_bos(box_array, bos_array, label_array, zone_type) =>
-    if zone_type == 1
-        for i = 0 to array.size(box_array) - 1
-            level_to_break = box.get_top(array.get(box_array,i))
-            if close >= level_to_break
-                copied_box = box.copy(array.get(box_array,i))
-                f_array_add_pop(bos_array, copied_box)
-                mid = (box.get_top(array.get(box_array,i)) + box.get_bottom(array.get(box_array,i))) / 2
-                box.set_top(array.get(bos_array,0), mid)
-                box.set_bottom(array.get(bos_array,0), mid)
-                box.set_extend( array.get(bos_array,0), extend.none)
-                box.set_right( array.get(bos_array,0), bar_index)
-                box.set_text( array.get(bos_array,0), 'BOS' )
-                box.set_text_color( array.get(bos_array,0), bos_label_color)
-                box.set_text_size( array.get(bos_array,0), size.small)
-                box.set_text_halign( array.get(bos_array,0), text.align_center)
-                box.set_text_valign( array.get(bos_array,0), text.align_center)
-                box.delete(array.get(box_array, i))
-                box.delete(array.get(label_array, i))
-
-    if zone_type == -1
-        for i = 0 to array.size(box_array) - 1
-            level_to_break = box.get_bottom(array.get(box_array,i))
-            if close <= level_to_break
-                copied_box = box.copy(array.get(box_array,i))
-                f_array_add_pop(bos_array, copied_box)
-                mid = (box.get_top(array.get(box_array,i)) + box.get_bottom(array.get(box_array,i))) / 2
-                box.set_top(array.get(bos_array,0), mid)
-                box.set_bottom(array.get(bos_array,0), mid)
-                box.set_extend( array.get(bos_array,0), extend.none)
-                box.set_right( array.get(bos_array,0), bar_index)
-                box.set_text( array.get(bos_array,0), 'BOS' )
-                box.set_text_color( array.get(bos_array,0), bos_label_color)
-                box.set_text_size( array.get(bos_array,0), size.small)
-                box.set_text_halign( array.get(bos_array,0), text.align_center)
-                box.set_text_valign( array.get(bos_array,0), text.align_center)
-                box.delete(array.get(box_array, i))
-                box.delete(array.get(label_array, i))
-
-//      FUNCTION MANAGE CURRENT BOXES BY CHANGING ENDPOINT
-f_extend_box_endpoint(box_array) =>
-    for i = 0 to array.size(box_array) - 1
-        box.set_right(array.get(box_array, i), bar_index + 100)
-
-//
-//END FUNCTIONS
-//  
-
-//
-//CALCULATIONS
-//
-
-//      CALCULATE ATR 
-atr = ta.atr(50)
-
-//      CALCULATE SWING HIGHS & SWING LOWS
-swing_high = ta.pivothigh(high, swing_length, swing_length)
-swing_low = ta.pivotlow(low, swing_length, swing_length)
-
-//      ARRAYS FOR SWING H/L & BN 
-var swing_high_values = array.new_float(5,0.00)
-var swing_low_values = array.new_float(5,0.00)
-
-var swing_high_bns = array.new_int(5,0)
-var swing_low_bns = array.new_int(5,0)
-
-//      ARRAYS FOR SUPPLY / DEMAND
-var current_supply_box = array.new_box(history_of_demand_to_keep, na)
-var current_demand_box = array.new_box(history_of_demand_to_keep, na)
-
-//      ARRAYS FOR SUPPLY / DEMAND POI LABELS
-var current_supply_poi = array.new_box(history_of_demand_to_keep, na)
-var current_demand_poi = array.new_box(history_of_demand_to_keep, na)
-
-//      ARRAYS FOR BOS
-var supply_bos = array.new_box(5, na)
-var demand_bos = array.new_box(5, na)
-//
-//END CALCULATIONS
-//
-
-//      NEW SWING HIGH
-if not na(swing_high)
-    //MANAGE SWING HIGH VALUES
-    f_array_add_pop(swing_high_values, swing_high)
-    f_array_add_pop(swing_high_bns, bar_index[swing_length])
-    if show_price_action_labels
-        f_sh_sl_labels(swing_high_values, 1)
-
-    f_supply_demand(swing_high_values, swing_high_bns, current_supply_box, current_supply_poi, 1, atr)
-
-//      NEW SWING LOW
-else if not na(swing_low)
-    //MANAGE SWING LOW VALUES
-    f_array_add_pop(swing_low_values, swing_low)
-    f_array_add_pop(swing_low_bns, bar_index[swing_length])
-    if show_price_action_labels
-        f_sh_sl_labels(swing_low_values, -1)
+    // Calculate swing highs and lows
+    swingHigh = ta.pivothigh(high, swingLength, swingLength)
+    swingLow = ta.pivotlow(low, swingLength, swingLength)
     
-    f_supply_demand(swing_low_values, swing_low_bns, current_demand_box, current_demand_poi, -1, atr)
+    // Update resistance level
+    if not na(swingHigh)
+        resistance := swingHigh
+    else
+        resistance := resistance
+    
+    // Update support level
+    if not na(swingLow)
+        support := swingLow
+    else
+        support := support
+    
+    [support, resistance]
 
-f_sd_to_bos(current_supply_box, supply_bos, current_supply_poi, 1)
-f_sd_to_bos(current_demand_box, demand_bos, current_demand_poi, -1)
+// Function to calculate momentum divergence
+getMomentumDivergence() =>
+    // RSI divergence detection
+    rsi = ta.rsi(close, rsiPeriod)
+    
+    // Higher highs in price vs lower highs in RSI (bearish divergence)
+    priceHigherHigh = high > high[swingLength]
+    rsiLowerHigh = rsi < rsi[swingLength]
+    bearishDivergence = priceHigherHigh and rsiLowerHigh and rsi > rsiOverbought
+    
+    // Lower lows in price vs higher lows in RSI (bullish divergence)
+    priceLowerLow = low < low[swingLength]
+    rsiHigherLow = rsi > rsi[swingLength]
+    bullishDivergence = priceLowerLow and rsiHigherLow and rsi < rsiOversold
+    
+    [bullishDivergence, bearishDivergence]
 
-f_extend_box_endpoint(current_supply_box)
-f_extend_box_endpoint(current_demand_box)
+// Function to calculate volume confirmation
+getVolumeConfirmation() =>
+    volumeSma = ta.sma(volume, volumePeriod)
+    volumeConfirmation = volume > volumeSma * volumeMultiplier
+    volumeConfirmation
 
-// === IMPROVED SIGNAL FILTERING CALCULATIONS ===
-// Calculate trend filter using EMA - More flexible
-trendEma = ta.ema(close, trendEmaPeriod)
-trendBullish = close > trendEma * (1 - trendStrength/100)
-trendBearish = close < trendEma * (1 + trendStrength/100)
+// Function to calculate volatility filter
+getVolatilityFilter() =>
+    atr = ta.atr(atrPeriod)
+    atrSma = ta.sma(atr, atrPeriod)
+    volatilityFilter = atr > atrSma * atrMultiplier
+    volatilityFilter
 
-// Calculate volume filter - Less restrictive
-volumeSma = ta.sma(volume, volumePeriod)
-volumeFilter = volume > volumeSma * volumeMultiplier
+// Function to get multi-timeframe trend
+getMultiTimeframeTrend() =>
+    // Higher timeframe trend
+    htfClose = rp_security(syminfo.tickerid, htfPeriod, close)
+    htfEma = rp_security(syminfo.tickerid, htfPeriod, ta.ema(close, 50))
+    htfTrend = htfClose > htfEma
+    
+    // Lower timeframe momentum
+    ltfClose = rp_security(syminfo.tickerid, ltfPeriod, close)
+    ltfEma = rp_security(syminfo.tickerid, ltfPeriod, ta.ema(close, 20))
+    ltfMomentum = ltfClose > ltfEma
+    
+    [htfTrend, ltfMomentum]
 
-// Calculate RSI filter - More permissive
-rsi = ta.rsi(close, rsiPeriod)
-rsiFilter = rsi < rsiOverbought and rsi > rsiOversold
+// Function to calculate advanced entry conditions
+getEntryConditions() =>
+    // Get all components
+    [support, resistance] = getSupportResistance()
+    [bullishDivergence, bearishDivergence] = getMomentumDivergence()
+    volumeConfirmation = getVolumeConfirmation()
+    volatilityFilter = getVolatilityFilter()
+    [htfTrend, ltfMomentum] = getMultiTimeframeTrend()
+    
+    // Calculate ATR for dynamic levels
+    atr = ta.atr(atrPeriod)
+    
+    // Long entry conditions
+    longCondition = false
+    if not na(support)
+        // Price near support with bullish divergence
+        nearSupport = close <= support + atr * 0.5
+        longCondition := nearSupport and bullishDivergence and volumeConfirmation and volatilityFilter and htfTrend and ltfMomentum
+    
+    // Short entry conditions
+    shortCondition = false
+    if not na(resistance)
+        // Price near resistance with bearish divergence
+        nearResistance = close >= resistance - atr * 0.5
+        shortCondition := nearResistance and bearishDivergence and volumeConfirmation and volatilityFilter and not htfTrend and not ltfMomentum
+    
+    [longCondition, shortCondition]
 
-// Calculate ATR filter for volatility - Less restrictive
-atrFilter = ta.atr(atrPeriod)
-atrFilterValue = atrFilter > ta.sma(atrFilter, atrPeriod) * atrMultiplier
+// Function to calculate exit conditions
+getExitConditions() =>
+    // Get support and resistance levels
+    [support, resistance] = getSupportResistance()
+    atr = ta.atr(atrPeriod)
+    
+    // Exit long conditions
+    exitLong = false
+    if not na(support)
+        // Exit when price breaks below support or RSI becomes overbought
+        rsi = ta.rsi(close, rsiPeriod)
+        exitLong := close < support - atr * 0.5 or rsi > rsiOverbought
+    
+    // Exit short conditions
+    exitShort = false
+    if not na(resistance)
+        // Exit when price breaks above resistance or RSI becomes oversold
+        rsi = ta.rsi(close, rsiPeriod)
+        exitShort := close > resistance + atr * 0.5 or rsi < rsiOversold
+    
+    [exitLong, exitShort]
 
 // === BASE FUNCTIONS ===
 // Returns MA input selection variant, default to SMA if blank or typo.
@@ -332,52 +205,26 @@ openSeries = variant(basisType, open[delayOffset], basisLen, offsetSigma, offset
 closeSeriesAlt = useRes ? rp_security(syminfo.tickerid, stratRes, closeSeries) : closeSeries
 openSeriesAlt = useRes ? rp_security(syminfo.tickerid, stratRes, openSeries) : openSeries
 
-// === IMPROVED SIGNAL GENERATION ===
-// Basic crossover/crossunder conditions
+// === ADVANCED SIGNAL GENERATION ===
+// Get entry and exit conditions
+[longCondition, shortCondition] = getEntryConditions()
+[exitLong, exitShort] = getExitConditions()
+
+// Combine with original crossover logic for additional confirmation
 basicLong = ta.crossover(closeSeriesAlt, openSeriesAlt)
 basicShort = ta.crossunder(closeSeriesAlt, openSeriesAlt)
 
-// Apply LESS RESTRICTIVE filtering - Only essential filters enabled by default
-longFilter = true
-shortFilter = true
-
-// Trend filter - Only essential filter enabled by default
-if enableTrendFilter
-    longFilter := longFilter and trendBullish
-    shortFilter := shortFilter and trendBearish
-
-// Volume filter - Disabled by default to avoid missing signals
-if enableVolumeFilter
-    longFilter := longFilter and volumeFilter
-    shortFilter := shortFilter and volumeFilter
-
-// RSI filter - Disabled by default to avoid missing signals
-if enableRSIFilter
-    longFilter := longFilter and rsiFilter
-    shortFilter := shortFilter and rsiFilter
-
-// ATR filter - Disabled by default to avoid missing signals
-if enableATRFilter
-    longFilter := longFilter and atrFilterValue
-    shortFilter := shortFilter and atrFilterValue
-
-// Final filtered signals
-buy = basicLong and longFilter
-sell = basicShort and shortFilter
-
-// === IMPROVED EXIT SIGNALS ===
-// Exit long positions when price crosses below the open series
-exitLong = ta.crossunder(close, openSeriesAlt)
-// Exit short positions when price crosses above the open series
-exitShort = ta.crossover(close, openSeriesAlt)
+// Final signals with multiple confirmations
+buy = longCondition and basicLong
+sell = shortCondition and basicShort
 
 // === SIGNAL PLOTTING ===
-plotshape(buy,  title = "Buy",  text = 'Buy',  style = shape.labelup,   location = location.belowbar, color= #00DBFF, textcolor = #FFFFFF, transp = 0, size = size.tiny)
-plotshape(sell, title = "Sell", text = 'Sell', style = shape.labeldown, location = location.abovebar, color= #E91E63, textcolor = #FFFFFF, transp = 0, size = size.tiny)
+plotshape(buy,  title = "Buy",  text = 'BUY',  style = shape.labelup,   location = location.belowbar, color= #00DBFF, textcolor = #FFFFFF, transp = 0, size = size.normal)
+plotshape(sell, title = "Sell", text = 'SELL', style = shape.labeldown, location = location.abovebar, color= #E91E63, textcolor = #FFFFFF, transp = 0, size = size.normal)
 
 // Plot exit signals
-plotshape(exitLong, title="Exit Long", text='Exit', style=shape.circle, location=location.abovebar, color=color.orange, textcolor=color.white, size=size.tiny)
-plotshape(exitShort, title="Exit Short", text='Exit', style=shape.circle, location=location.belowbar, color=color.orange, textcolor=color.white, size=size.tiny)
+plotshape(exitLong, title="Exit Long", text='EXIT', style=shape.circle, location=location.abovebar, color=color.orange, textcolor=color.white, size=size.small)
+plotshape(exitShort, title="Exit Short", text='EXIT', style=shape.circle, location=location.belowbar, color=color.orange, textcolor=color.white, size=size.small)
 
 // === STRATEGY ===
 // stop loss
@@ -410,40 +257,46 @@ if buy and tradeType != 'SHORT' and tradeType != 'NONE'
 if sell and tradeType != 'LONG' and tradeType != 'NONE'
     strategy.entry("Short" , strategy.short, alert_message = i_alert_txt_entry_short)
 
-// === IMPROVED EXIT MANAGEMENT ===
+// === ADVANCED EXIT MANAGEMENT ===
 // Exit long positions
 if exitLong and strategy.position_size > 0
-    strategy.close("Long", comment="Exit Signal")
+    strategy.close("Long", comment="Advanced Exit Signal")
 
 // Exit short positions  
 if exitShort and strategy.position_size < 0
-    strategy.close("Short", comment="Exit Signal")
+    strategy.close("Short", comment="Advanced Exit Signal")
 
-// === ADDITIONAL VISUAL INDICATORS ===
-// Plot trend EMA for reference
-plot(trendEma, title="Trend EMA", color=color.blue, linewidth=2)
+// === VISUAL INDICATORS ===
+// Plot support and resistance levels
+[support, resistance] = getSupportResistance()
+plot(support, title="Dynamic Support", color=color.green, linewidth=2, style=plot.style_line)
+plot(resistance, title="Dynamic Resistance", color=color.red, linewidth=2, style=plot.style_line)
 
-// Plot volume indicator
+// Plot RSI levels
+rsi = ta.rsi(close, rsiPeriod)
+hline(rsiOverbought, title="RSI Overbought", color=color.red, linestyle=hline.style_dashed)
+hline(rsiOversold, title="RSI Oversold", color=color.green, linestyle=hline.style_dashed)
+
+// Plot volume confirmation
+volumeSma = ta.sma(volume, volumePeriod)
 plot(volumeSma, title="Volume SMA", color=color.gray, linewidth=1, display=display.none)
 
 // === SIGNAL QUALITY INDICATOR ===
 // Create a signal quality score (0-100)
 signalQuality = 0.0
 if buy or sell
-    signalQuality := 50.0  // Base score increased from 25
+    signalQuality := 40.0  // Base score for advanced algorithm
     
-    // Add points for each filter passed
-    if enableTrendFilter and (trendBullish or trendBearish)
-        signalQuality := signalQuality + 25.0
+    // Add points for each confirmation
+    [htfTrend, ltfMomentum] = getMultiTimeframeTrend()
+    if htfTrend and ltfMomentum
+        signalQuality := signalQuality + 30.0
     
-    if enableVolumeFilter and volumeFilter
-        signalQuality := signalQuality + 25.0
+    if getVolumeConfirmation()
+        signalQuality := signalQuality + 15.0
     
-    if enableRSIFilter and rsiFilter
-        signalQuality := signalQuality + 25.0
-    
-    if enableATRFilter and atrFilterValue
-        signalQuality := signalQuality + 25.0
+    if getVolatilityFilter()
+        signalQuality := signalQuality + 15.0
 
 // Plot signal quality as background color
 bgcolor(buy or sell ? color.new(color.green, 90 - signalQuality) : na, title="Signal Quality")
@@ -453,9 +306,24 @@ bgcolor(buy or sell ? color.new(color.green, 90 - signalQuality) : na, title="Si
 winRate = strategy.wintrades / (strategy.wintrades + strategy.losstrades) * 100
 winRate := na(winRate) ? 0 : winRate
 
-// Display win rate on chart
+// Calculate profit factor
+profitFactor = strategy.grossprofit / strategy.grossloss
+profitFactor := na(profitFactor) ? 0 : profitFactor
+
+// Display performance metrics on chart
 if barstate.islast
-    label.new(bar_index, high, "Win Rate: " + str.tostring(math.round(winRate, 2)) + "%", 
-              color=winRate > 60 ? color.green : winRate > 50 ? color.orange : color.red,
+    label.new(bar_index, high, "Win Rate: " + str.tostring(math.round(winRate, 2)) + "%\nProfit Factor: " + str.tostring(math.round(profitFactor, 2)), 
+              color=winRate > 70 ? color.green : winRate > 60 ? color.orange : color.red,
               textcolor=color.white, style=label.style_label_down, size=size.small)
+
+// === MARKET STRUCTURE ANALYSIS ===
+// Show market structure labels
+if barstate.islast
+    [htfTrend, ltfMomentum] = getMultiTimeframeTrend()
+    trendText = htfTrend ? "HTF: BULLISH" : "HTF: BEARISH"
+    momentumText = ltfMomentum ? "LTF: BULLISH" : "LTF: BEARISH"
+    
+    label.new(bar_index - 50, low, trendText + "\n" + momentumText,
+              color=htfTrend and ltfMomentum ? color.green : not htfTrend and not ltfMomentum ? color.red : color.orange,
+              textcolor=color.white, style=label.style_label_up, size=size.small)
 
