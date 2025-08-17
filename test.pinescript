@@ -1,6 +1,6 @@
-//@version=5
+//@version=6
 //
-strategy(title='God 62 PERSONAL - ADVANCED ALGORITHM', overlay=true, pyramiding=0, default_qty_type=strategy.percent_of_equity, default_qty_value=10, calc_on_every_tick=false)
+strategy(title='God 62 PERSONAL - SIMPLE & EFFECTIVE', overlay=true, pyramiding=0, default_qty_type=strategy.percent_of_equity, default_qty_value=10, calc_on_every_tick=false)
 //
 // === INPUTS ===
 res    = input.timeframe(title='TIMEFRAME', defval='15', group ="NON REPAINT")
@@ -15,30 +15,23 @@ scolor = input(true, title='Show coloured Bars to indicate Trend?')
 delayOffset = input.int(defval=0, title='Delay Open/Close MA (Forces Non-Repainting)', minval=0, step=1)
 tradeType = input.string('BOTH', title='What trades should be taken : ', options=['LONG', 'SHORT', 'BOTH', 'NONE'])
 
-// === ADVANCED ALGORITHM SETTINGS ===
-// Momentum settings
+// === SIMPLE ALGORITHM SETTINGS ===
+// RSI settings
 rsiPeriod = input.int(14, title="RSI Period", minval=10, maxval=30, group="Momentum")
 rsiOverbought = input.int(70, title="RSI Overbought", minval=65, maxval=80, group="Momentum")
 rsiOversold = input.int(30, title="RSI Oversold", minval=20, maxval=35, group="Momentum")
 
+// Moving average settings
+fastEma = input.int(20, title="Fast EMA", minval=10, maxval=50, group="Trend")
+slowEma = input.int(50, title="Slow EMA", minval=30, maxval=200, group="Trend")
+
 // Volume settings
 volumePeriod = input.int(20, title="Volume SMA Period", minval=10, maxval=50, group="Volume")
-volumeMultiplier = input.float(1.5, title="Volume Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Volume")
-
-// Market structure settings
-swingLength = input.int(10, title="Swing High/Low Length", minval=5, maxval=20, group="Market Structure")
-atrPeriod = input.int(14, title="ATR Period", minval=10, maxval=30, group="Market Structure")
-atrMultiplier = input.float(1.5, title="ATR Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Market Structure")
-
-// Multi-timeframe settings
-htfPeriod = input.string("D", title="Higher Timeframe", options=["1", "3", "5", "15", "30", "60", "D", "W"], group="Multi-Timeframe")
-ltfPeriod = input.string("5", title="Lower Timeframe", options=["1", "3", "5", "15", "30", "60", "D", "W"], group="Multi-Timeframe")
+volumeMultiplier = input.float(1.2, title="Volume Multiplier", minval=1.0, maxval=2.0, step=0.1, group="Volume")
 
 // Exit management
-enableTrailingStop = input.bool(true, title="Enable Trailing Stop", group="Exit Management")
-trailingStopPercent = input.float(1.5, title="Trailing Stop %", minval=0.5, maxval=5.0, step=0.1, group="Exit Management")
 enableTakeProfit = input.bool(true, title="Enable Take Profit", group="Exit Management")
-takeProfitPercent = input.float(2.5, title="Take Profit %", minval=1.0, maxval=10.0, step=0.1, group="Exit Management")
+takeProfitPercent = input.float(2.0, title="Take Profit %", minval=1.0, maxval=10.0, step=0.1, group="Exit Management")
 enableStopLoss = input.bool(true, title="Enable Stop Loss", group="Exit Management")
 stopLossPercent = input.float(1.5, title="Stop Loss %", minval=0.5, maxval=5.0, step=0.1, group="Exit Management")
 
@@ -47,125 +40,6 @@ stopLossPercent = input.float(1.5, title="Stop Loss %", minval=0.5, maxval=5.0, 
 // === NON-REPAINTING SECURITY FUNCTION ===
 rp_security(_symbol, _res, _src) =>
     request.security(_symbol, _res, _src, barmerge.gaps_off, barmerge.lookahead_off)
-
-// === ADVANCED ALGORITHM FUNCTIONS ===
-
-// Function to calculate dynamic support and resistance
-getSupportResistance() =>
-    var float resistance = na
-    var float support = na
-    
-    // Calculate swing highs and lows
-    swingHigh = ta.pivothigh(high, swingLength, swingLength)
-    swingLow = ta.pivotlow(low, swingLength, swingLength)
-    
-    // Update resistance level
-    if not na(swingHigh)
-        resistance := swingHigh
-    else
-        resistance := resistance
-    
-    // Update support level
-    if not na(swingLow)
-        support := swingLow
-    else
-        support := support
-    
-    [support, resistance]
-
-// Function to calculate momentum divergence
-getMomentumDivergence() =>
-    // RSI divergence detection
-    rsi = ta.rsi(close, rsiPeriod)
-    
-    // Higher highs in price vs lower highs in RSI (bearish divergence)
-    priceHigherHigh = high > high[swingLength]
-    rsiLowerHigh = rsi < rsi[swingLength]
-    bearishDivergence = priceHigherHigh and rsiLowerHigh and rsi > rsiOverbought
-    
-    // Lower lows in price vs higher lows in RSI (bullish divergence)
-    priceLowerLow = low < low[swingLength]
-    rsiHigherLow = rsi > rsi[swingLength]
-    bullishDivergence = priceLowerLow and rsiHigherLow and rsi < rsiOversold
-    
-    [bullishDivergence, bearishDivergence]
-
-// Function to calculate volume confirmation
-getVolumeConfirmation() =>
-    volumeSma = ta.sma(volume, volumePeriod)
-    volumeConfirmation = volume > volumeSma * volumeMultiplier
-    volumeConfirmation
-
-// Function to calculate volatility filter
-getVolatilityFilter() =>
-    atr = ta.atr(atrPeriod)
-    atrSma = ta.sma(atr, atrPeriod)
-    volatilityFilter = atr > atrSma * atrMultiplier
-    volatilityFilter
-
-// Function to get multi-timeframe trend
-getMultiTimeframeTrend() =>
-    // Higher timeframe trend
-    htfClose = rp_security(syminfo.tickerid, htfPeriod, close)
-    htfEma = rp_security(syminfo.tickerid, htfPeriod, ta.ema(close, 50))
-    htfTrend = htfClose > htfEma
-    
-    // Lower timeframe momentum
-    ltfClose = rp_security(syminfo.tickerid, ltfPeriod, close)
-    ltfEma = rp_security(syminfo.tickerid, ltfPeriod, ta.ema(close, 20))
-    ltfMomentum = ltfClose > ltfEma
-    
-    [htfTrend, ltfMomentum]
-
-// Function to calculate advanced entry conditions
-getEntryConditions() =>
-    // Get all components
-    [support, resistance] = getSupportResistance()
-    [bullishDivergence, bearishDivergence] = getMomentumDivergence()
-    volumeConfirmation = getVolumeConfirmation()
-    volatilityFilter = getVolatilityFilter()
-    [htfTrend, ltfMomentum] = getMultiTimeframeTrend()
-    
-    // Calculate ATR for dynamic levels
-    atr = ta.atr(atrPeriod)
-    
-    // Long entry conditions
-    longCondition = false
-    if not na(support)
-        // Price near support with bullish divergence
-        nearSupport = close <= support + atr * 0.5
-        longCondition := nearSupport and bullishDivergence and volumeConfirmation and volatilityFilter and htfTrend and ltfMomentum
-    
-    // Short entry conditions
-    shortCondition = false
-    if not na(resistance)
-        // Price near resistance with bearish divergence
-        nearResistance = close >= resistance - atr * 0.5
-        shortCondition := nearResistance and bearishDivergence and volumeConfirmation and volatilityFilter and not htfTrend and not ltfMomentum
-    
-    [longCondition, shortCondition]
-
-// Function to calculate exit conditions
-getExitConditions() =>
-    // Get support and resistance levels
-    [support, resistance] = getSupportResistance()
-    atr = ta.atr(atrPeriod)
-    
-    // Exit long conditions
-    exitLong = false
-    if not na(support)
-        // Exit when price breaks below support or RSI becomes overbought
-        rsi = ta.rsi(close, rsiPeriod)
-        exitLong := close < support - atr * 0.5 or rsi > rsiOverbought
-    
-    // Exit short conditions
-    exitShort = false
-    if not na(resistance)
-        // Exit when price breaks above resistance or RSI becomes oversold
-        rsi = ta.rsi(close, rsiPeriod)
-        exitShort := close > resistance + atr * 0.5 or rsi < rsiOversold
-    
-    [exitLong, exitShort]
 
 // === BASE FUNCTIONS ===
 // Returns MA input selection variant, default to SMA if blank or typo.
@@ -205,22 +79,48 @@ openSeries = variant(basisType, open[delayOffset], basisLen, offsetSigma, offset
 closeSeriesAlt = useRes ? rp_security(syminfo.tickerid, stratRes, closeSeries) : closeSeries
 openSeriesAlt = useRes ? rp_security(syminfo.tickerid, stratRes, openSeries) : openSeries
 
-// === ADVANCED SIGNAL GENERATION ===
-// Get entry and exit conditions
-[longCondition, shortCondition] = getEntryConditions()
-[exitLong, exitShort] = getExitConditions()
+// === SIMPLE ALGORITHM CALCULATIONS ===
+// Calculate RSI
+rsi = ta.rsi(close, rsiPeriod)
 
-// Combine with original crossover logic for additional confirmation
+// Calculate EMAs
+fastEmaValue = ta.ema(close, fastEma)
+slowEmaValue = ta.ema(close, slowEma)
+
+// Calculate volume confirmation
+volumeSma = ta.sma(volume, volumePeriod)
+volumeConfirmation = volume > volumeSma * volumeMultiplier
+
+// Calculate basic crossover signals
 basicLong = ta.crossover(closeSeriesAlt, openSeriesAlt)
 basicShort = ta.crossunder(closeSeriesAlt, openSeriesAlt)
 
-// Final signals with multiple confirmations
-buy = longCondition and basicLong
-sell = shortCondition and basicShort
+// === SIGNAL GENERATION ===
+// Long entry conditions
+longCondition = basicLong and 
+                rsi < rsiOverbought and 
+                close > fastEmaValue and 
+                fastEmaValue > slowEmaValue and 
+                volumeConfirmation
+
+// Short entry conditions
+shortCondition = basicShort and 
+                 rsi > rsiOversold and 
+                 close < fastEmaValue and 
+                 fastEmaValue < slowEmaValue and 
+                 volumeConfirmation
+
+// Exit conditions
+exitLong = ta.crossunder(close, fastEmaValue) or rsi > rsiOverbought
+exitShort = ta.crossover(close, fastEmaValue) or rsi < rsiOversold
+
+// Final signals
+buy = longCondition
+sell = shortCondition
 
 // === SIGNAL PLOTTING ===
-plotshape(buy,  title = "Buy",  text = 'BUY',  style = shape.labelup,   location = location.belowbar, color= #00DBFF, textcolor = #FFFFFF, transp = 0, size = size.normal)
-plotshape(sell, title = "Sell", text = 'SELL', style = shape.labeldown, location = location.abovebar, color= #E91E63, textcolor = #FFFFFF, transp = 0, size = size.normal)
+plotshape(buy, title="Buy", text='BUY', style=shape.labelup, location=location.belowbar, color=color.new(#00DBFF, 0), textcolor=color.white, size=size.normal)
+plotshape(sell, title="Sell", text='SELL', style=shape.labeldown, location=location.abovebar, color=color.new(#E91E63, 0), textcolor=color.white, size=size.normal)
 
 // Plot exit signals
 plotshape(exitLong, title="Exit Long", text='EXIT', style=shape.circle, location=location.abovebar, color=color.orange, textcolor=color.white, size=size.small)
@@ -252,51 +152,44 @@ i_alert_txt_entry_short = input.text_area(defval = "", title = "Short Entry Mess
 // === STRATEGY EXECUTION ===
 // Entries and Exits with TP/SL
 if buy and tradeType != 'SHORT' and tradeType != 'NONE'
-    strategy.entry("Long" , strategy.long , alert_message = i_alert_txt_entry_long)
+    strategy.entry("Long", strategy.long, alert_message = i_alert_txt_entry_long)
 
 if sell and tradeType != 'LONG' and tradeType != 'NONE'
-    strategy.entry("Short" , strategy.short, alert_message = i_alert_txt_entry_short)
+    strategy.entry("Short", strategy.short, alert_message = i_alert_txt_entry_short)
 
-// === ADVANCED EXIT MANAGEMENT ===
+// === EXIT MANAGEMENT ===
 // Exit long positions
 if exitLong and strategy.position_size > 0
-    strategy.close("Long", comment="Advanced Exit Signal")
+    strategy.close("Long", comment="Exit Signal")
 
 // Exit short positions  
 if exitShort and strategy.position_size < 0
-    strategy.close("Short", comment="Advanced Exit Signal")
+    strategy.close("Short", comment="Exit Signal")
 
 // === VISUAL INDICATORS ===
-// Plot support and resistance levels
-[support, resistance] = getSupportResistance()
-plot(support, title="Dynamic Support", color=color.green, linewidth=2, style=plot.style_line)
-plot(resistance, title="Dynamic Resistance", color=color.red, linewidth=2, style=plot.style_line)
+// Plot EMAs
+plot(fastEmaValue, title="Fast EMA", color=color.blue, linewidth=2)
+plot(slowEmaValue, title="Slow EMA", color=color.red, linewidth=2)
 
 // Plot RSI levels
-rsi = ta.rsi(close, rsiPeriod)
 hline(rsiOverbought, title="RSI Overbought", color=color.red, linestyle=hline.style_dashed)
 hline(rsiOversold, title="RSI Oversold", color=color.green, linestyle=hline.style_dashed)
 
 // Plot volume confirmation
-volumeSma = ta.sma(volume, volumePeriod)
 plot(volumeSma, title="Volume SMA", color=color.gray, linewidth=1, display=display.none)
 
 // === SIGNAL QUALITY INDICATOR ===
 // Create a signal quality score (0-100)
 signalQuality = 0.0
 if buy or sell
-    signalQuality := 40.0  // Base score for advanced algorithm
+    signalQuality := 50.0  // Base score
     
     // Add points for each confirmation
-    [htfTrend, ltfMomentum] = getMultiTimeframeTrend()
-    if htfTrend and ltfMomentum
-        signalQuality := signalQuality + 30.0
+    if close > fastEmaValue and fastEmaValue > slowEmaValue
+        signalQuality := signalQuality + 25.0
     
-    if getVolumeConfirmation()
-        signalQuality := signalQuality + 15.0
-    
-    if getVolatilityFilter()
-        signalQuality := signalQuality + 15.0
+    if volumeConfirmation
+        signalQuality := signalQuality + 25.0
 
 // Plot signal quality as background color
 bgcolor(buy or sell ? color.new(color.green, 90 - signalQuality) : na, title="Signal Quality")
@@ -313,17 +206,16 @@ profitFactor := na(profitFactor) ? 0 : profitFactor
 // Display performance metrics on chart
 if barstate.islast
     label.new(bar_index, high, "Win Rate: " + str.tostring(math.round(winRate, 2)) + "%\nProfit Factor: " + str.tostring(math.round(profitFactor, 2)), 
-              color=winRate > 70 ? color.green : winRate > 60 ? color.orange : color.red,
+              color=winRate > 60 ? color.green : winRate > 50 ? color.orange : color.red,
               textcolor=color.white, style=label.style_label_down, size=size.small)
 
-// === MARKET STRUCTURE ANALYSIS ===
-// Show market structure labels
+// === MARKET STATUS ===
+// Show current market status
 if barstate.islast
-    [htfTrend, ltfMomentum] = getMultiTimeframeTrend()
-    trendText = htfTrend ? "HTF: BULLISH" : "HTF: BEARISH"
-    momentumText = ltfMomentum ? "LTF: BULLISH" : "LTF: BEARISH"
+    trendText = close > fastEmaValue and fastEmaValue > slowEmaValue ? "BULLISH TREND" : close < fastEmaValue and fastEmaValue < slowEmaValue ? "BEARISH TREND" : "SIDEWAYS"
+    trendColor = close > fastEmaValue and fastEmaValue > slowEmaValue ? color.green : close < fastEmaValue and fastEmaValue < slowEmaValue ? color.red : color.orange
     
-    label.new(bar_index - 50, low, trendText + "\n" + momentumText,
-              color=htfTrend and ltfMomentum ? color.green : not htfTrend and not ltfMomentum ? color.red : color.orange,
+    label.new(bar_index - 50, low, "Market: " + trendText + "\nRSI: " + str.tostring(math.round(rsi, 1)),
+              color=trendColor,
               textcolor=color.white, style=label.style_label_up, size=size.small)
 
