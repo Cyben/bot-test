@@ -1,6 +1,6 @@
 //@version=5
 //
-strategy(title='God 62 PERSONAL - OPTIMIZED', overlay=true, pyramiding=0, default_qty_type=strategy.percent_of_equity, default_qty_value=10, calc_on_every_tick=false)
+strategy(title='God 62 PERSONAL - OPTIMIZED v2', overlay=true, pyramiding=0, default_qty_type=strategy.percent_of_equity, default_qty_value=10, calc_on_every_tick=false)
 //
 // === INPUTS ===
 res    = input.timeframe(title='TIMEFRAME', defval='15', group ="NON REPAINT")
@@ -15,28 +15,36 @@ scolor = input(true, title='Show coloured Bars to indicate Trend?')
 delayOffset = input.int(defval=0, title='Delay Open/Close MA (Forces Non-Repainting)', minval=0, step=1)
 tradeType = input.string('BOTH', title='What trades should be taken : ', options=['LONG', 'SHORT', 'BOTH', 'NONE'])
 
-// === SIGNAL FILTERING INPUTS ===
+// === IMPROVED SIGNAL FILTERING INPUTS ===
 enableTrendFilter = input.bool(true, title="Enable Trend Filter", group="Signal Filtering")
-enableVolumeFilter = input.bool(true, title="Enable Volume Filter", group="Signal Filtering")
-enableRSIFilter = input.bool(true, title="Enable RSI Filter", group="Signal Filtering")
-enableATRFilter = input.bool(true, title="Enable ATR Filter", group="Signal Filtering")
+enableVolumeFilter = input.bool(false, title="Enable Volume Filter", group="Signal Filtering") // Disabled by default
+enableRSIFilter = input.bool(false, title="Enable RSI Filter", group="Signal Filtering") // Disabled by default
+enableATRFilter = input.bool(false, title="Enable ATR Filter", group="Signal Filtering") // Disabled by default
 
-// Trend filter settings
-trendEmaPeriod = input.int(200, title="Trend EMA Period", minval=50, maxval=500, group="Signal Filtering")
-trendStrength = input.float(0.5, title="Trend Strength Multiplier", minval=0.1, maxval=2.0, step=0.1, group="Signal Filtering")
+// Trend filter settings - More flexible
+trendEmaPeriod = input.int(50, title="Trend EMA Period", minval=20, maxval=200, group="Signal Filtering") // Reduced from 200
+trendStrength = input.float(0.3, title="Trend Strength Multiplier", minval=0.1, maxval=1.0, step=0.1, group="Signal Filtering") // Reduced from 0.5
 
 // Volume filter settings
 volumePeriod = input.int(20, title="Volume SMA Period", minval=10, maxval=50, group="Signal Filtering")
-volumeMultiplier = input.float(1.5, title="Volume Multiplier", minval=1.0, maxval=3.0, step=0.1, group="Signal Filtering")
+volumeMultiplier = input.float(1.2, title="Volume Multiplier", minval=1.0, maxval=2.0, step=0.1, group="Signal Filtering") // Reduced from 1.5
 
-// RSI filter settings
+// RSI filter settings - More permissive
 rsiPeriod = input.int(14, title="RSI Period", minval=10, maxval=30, group="Signal Filtering")
-rsiOverbought = input.int(70, title="RSI Overbought", minval=60, maxval=85, group="Signal Filtering")
-rsiOversold = input.int(30, title="RSI Oversold", minval=15, maxval=40, group="Signal Filtering")
+rsiOverbought = input.int(75, title="RSI Overbought", minval=65, maxval=85, group="Signal Filtering") // Increased from 70
+rsiOversold = input.int(25, title="RSI Oversold", minval=15, maxval=35, group="Signal Filtering") // Reduced from 30
 
 // ATR filter settings
 atrPeriod = input.int(14, title="ATR Period", minval=10, maxval=30, group="Signal Filtering")
-atrMultiplier = input.float(1.0, title="ATR Multiplier", minval=0.5, maxval=3.0, step=0.1, group="Signal Filtering")
+atrMultiplier = input.float(0.8, title="ATR Multiplier", minval=0.5, maxval=2.0, step=0.1, group="Signal Filtering") // Reduced from 1.0
+
+// === EXIT MANAGEMENT INPUTS ===
+enableTrailingStop = input.bool(true, title="Enable Trailing Stop", group="Exit Management")
+trailingStopPercent = input.float(2.0, title="Trailing Stop %", minval=0.5, maxval=10.0, step=0.1, group="Exit Management")
+enableTakeProfit = input.bool(true, title="Enable Take Profit", group="Exit Management")
+takeProfitPercent = input.float(3.0, title="Take Profit %", minval=1.0, maxval=10.0, step=0.1, group="Exit Management")
+enableStopLoss = input.bool(true, title="Enable Stop Loss", group="Exit Management")
+stopLossPercent = input.float(2.0, title="Stop Loss %", minval=0.5, maxval=10.0, step=0.1, group="Exit Management")
 
 // === /INPUTS ===
 
@@ -268,22 +276,21 @@ f_sd_to_bos(current_demand_box, demand_bos, current_demand_poi, -1)
 f_extend_box_endpoint(current_supply_box)
 f_extend_box_endpoint(current_demand_box)
 
-// === SIGNAL FILTERING CALCULATIONS ===
-// Calculate trend filter using EMA
+// === IMPROVED SIGNAL FILTERING CALCULATIONS ===
+// Calculate trend filter using EMA - More flexible
 trendEma = ta.ema(close, trendEmaPeriod)
-trendBullish = close > trendEma
-trendBearish = close < trendEma
-trendStrengthValue = math.abs(close - trendEma) / trendEma * 100
+trendBullish = close > trendEma * (1 - trendStrength/100)
+trendBearish = close < trendEma * (1 + trendStrength/100)
 
-// Calculate volume filter
+// Calculate volume filter - Less restrictive
 volumeSma = ta.sma(volume, volumePeriod)
 volumeFilter = volume > volumeSma * volumeMultiplier
 
-// Calculate RSI filter
+// Calculate RSI filter - More permissive
 rsi = ta.rsi(close, rsiPeriod)
 rsiFilter = rsi < rsiOverbought and rsi > rsiOversold
 
-// Calculate ATR filter for volatility
+// Calculate ATR filter for volatility - Less restrictive
 atrFilter = ta.atr(atrPeriod)
 atrFilterValue = atrFilter > ta.sma(atrFilter, atrPeriod) * atrMultiplier
 
@@ -330,26 +337,26 @@ openSeriesAlt = useRes ? rp_security(syminfo.tickerid, stratRes, openSeries) : o
 basicLong = ta.crossover(closeSeriesAlt, openSeriesAlt)
 basicShort = ta.crossunder(closeSeriesAlt, openSeriesAlt)
 
-// Apply comprehensive filtering
+// Apply LESS RESTRICTIVE filtering - Only essential filters enabled by default
 longFilter = true
 shortFilter = true
 
-// Trend filter
+// Trend filter - Only essential filter enabled by default
 if enableTrendFilter
     longFilter := longFilter and trendBullish
     shortFilter := shortFilter and trendBearish
 
-// Volume filter
+// Volume filter - Disabled by default to avoid missing signals
 if enableVolumeFilter
     longFilter := longFilter and volumeFilter
     shortFilter := shortFilter and volumeFilter
 
-// RSI filter
+// RSI filter - Disabled by default to avoid missing signals
 if enableRSIFilter
-    longFilter := longFilter and rsi < rsiOverbought
-    shortFilter := shortFilter and rsi > rsiOversold
+    longFilter := longFilter and rsiFilter
+    shortFilter := shortFilter and rsiFilter
 
-// ATR filter (volatility)
+// ATR filter - Disabled by default to avoid missing signals
 if enableATRFilter
     longFilter := longFilter and atrFilterValue
     shortFilter := shortFilter and atrFilterValue
@@ -358,9 +365,19 @@ if enableATRFilter
 buy = basicLong and longFilter
 sell = basicShort and shortFilter
 
+// === IMPROVED EXIT SIGNALS ===
+// Exit long positions when price crosses below the open series
+exitLong = ta.crossunder(close, openSeriesAlt)
+// Exit short positions when price crosses above the open series
+exitShort = ta.crossover(close, openSeriesAlt)
+
 // === SIGNAL PLOTTING ===
 plotshape(buy,  title = "Buy",  text = 'Buy',  style = shape.labelup,   location = location.belowbar, color= #00DBFF, textcolor = #FFFFFF, transp = 0, size = size.tiny)
 plotshape(sell, title = "Sell", text = 'Sell', style = shape.labeldown, location = location.abovebar, color= #E91E63, textcolor = #FFFFFF, transp = 0, size = size.tiny)
+
+// Plot exit signals
+plotshape(exitLong, title="Exit Long", text='Exit', style=shape.circle, location=location.abovebar, color=color.orange, textcolor=color.white, size=size.tiny)
+plotshape(exitShort, title="Exit Short", text='Exit', style=shape.circle, location=location.belowbar, color=color.orange, textcolor=color.white, size=size.tiny)
 
 // === STRATEGY ===
 // stop loss
@@ -393,6 +410,15 @@ if buy and tradeType != 'SHORT' and tradeType != 'NONE'
 if sell and tradeType != 'LONG' and tradeType != 'NONE'
     strategy.entry("Short" , strategy.short, alert_message = i_alert_txt_entry_short)
 
+// === IMPROVED EXIT MANAGEMENT ===
+// Exit long positions
+if exitLong and strategy.position_size > 0
+    strategy.close("Long", comment="Exit Signal")
+
+// Exit short positions  
+if exitShort and strategy.position_size < 0
+    strategy.close("Short", comment="Exit Signal")
+
 // === ADDITIONAL VISUAL INDICATORS ===
 // Plot trend EMA for reference
 plot(trendEma, title="Trend EMA", color=color.blue, linewidth=2)
@@ -404,7 +430,7 @@ plot(volumeSma, title="Volume SMA", color=color.gray, linewidth=1, display=displ
 // Create a signal quality score (0-100)
 signalQuality = 0.0
 if buy or sell
-    signalQuality := 25.0  // Base score for basic signal
+    signalQuality := 50.0  // Base score increased from 25
     
     // Add points for each filter passed
     if enableTrendFilter and (trendBullish or trendBearish)
@@ -421,4 +447,15 @@ if buy or sell
 
 // Plot signal quality as background color
 bgcolor(buy or sell ? color.new(color.green, 90 - signalQuality) : na, title="Signal Quality")
+
+// === PERFORMANCE METRICS ===
+// Calculate win rate
+winRate = strategy.wintrades / (strategy.wintrades + strategy.losstrades) * 100
+winRate := na(winRate) ? 0 : winRate
+
+// Display win rate on chart
+if barstate.islast
+    label.new(bar_index, high, "Win Rate: " + str.tostring(math.round(winRate, 2)) + "%", 
+              color=winRate > 60 ? color.green : winRate > 50 ? color.orange : color.red,
+              textcolor=color.white, style=label.style_label_down, size=size.small)
 
